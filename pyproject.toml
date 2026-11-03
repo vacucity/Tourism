@@ -1,0 +1,12 @@
+[project]
+name = "nps-tourism-lakehouse"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "beautifulsoup4>=4.15.0",
+    "pandas>=3.0.6",
+    "pytrends>=4.9.2",
+    "requests>=2.34.2",
+]
