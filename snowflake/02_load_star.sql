@@ -41,17 +41,21 @@ CREATE OR REPLACE TABLE STAGING.GOLD_PARK_MONTH (
 )
 COMMENT = 'Grain: one row per park x month. gold_park_month.csv loaded as is, reloaded on every run';
 
--- FORCE = TRUE loads the file even if Snowflake's load history lists it as loaded before.
+-- Snowflake records which files were loaded into a table and COPY skips them. TRUNCATE empties the table and
+-- deletes that record, so the COPY below loads the file again. COPY run a second time on its own skips the file
+-- ("Copy executed with 0 files processed") instead of loading every row twice.
+TRUNCATE TABLE STAGING.GOLD_PARK_MONTH;
+
 -- ON_ERROR = ABORT_STATEMENT: one bad row (or a missing file) stops the COPY and loads nothing.
 -- Result: one row for gold_park_month.csv with status LOADED and rows_parsed = rows_loaded.
 COPY INTO STAGING.GOLD_PARK_MONTH
   FROM @STAGING.NPS_STAGE
   FILES = ('gold_park_month.csv')
   FILE_FORMAT = (FORMAT_NAME = 'STAGING.NPS_CSV')
-  ON_ERROR = ABORT_STATEMENT
-  FORCE = TRUE;
+  ON_ERROR = ABORT_STATEMENT;
 
--- Every row of the file is in staging, once: staging_rows = rows_loaded above = distinct_keys (660 for 2015-2025)
+-- Every row of the file is in staging, once: staging_rows = rows_loaded above = distinct_keys (660 for 2015-2025).
+-- If staging_rows is larger than distinct_keys, do not run the MERGEs: run again from the TRUNCATE above.
 SELECT
   COUNT(*)                             AS staging_rows,
   COUNT(DISTINCT park_code, month_key) AS distinct_keys,
