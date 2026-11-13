@@ -17,7 +17,11 @@ also let several machines share the work:
 | s1 | 2015-02-18 | 2017-02-28 | 744 GB |
 | s2 | 2017-03-01 | 2019-06-30 | 727 GB |
 | s3 | 2019-07-01 | 2023-03-31 | 733 GB |
-| s4 | 2023-04-01 | 2026-11-07 | 686 GB |
+| s4 | 2023-04-01 | 2026-11-08 | 686 GB |
+
+The full scan ran on one laptop in 24.5 hours (2026-11-12 to 11-13); results are in `docs/week8/a1_gdelt_test.md`.
+One file, `20160508140000.gkg.csv.zip`, does not match its master-list entry, so s1 is exported with
+`--allow-incomplete`.
 
 Before a long run: plug the laptop in and keep the lid open (the script stops Windows from going to
 sleep when idle, but closing the lid still suspends it). The full archive downloads about 2.9 TB,

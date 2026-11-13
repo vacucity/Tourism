@@ -7,8 +7,37 @@ with `src/ingest/gdelt_gkg.py` (6 workers, one laptop).
 | --- | --- |
 | Every checksum verifies | 672 of 672 files downloaded, all 672 MD5 checksums match the master file list |
 | A rerun reproduces the counts | A second scan into a separate database gave identical totals and identical per-file rows and matches: 914,630 records, 388 matches, 0 differences |
-| Projected full scan takes 7 days or less | 3.73 GB in about 121 s = 30.9 MB/s, so the full 2.889 TB archive takes about 26 hours |
+| Projected full scan takes 7 days or less | 3.73 GB in about 121 s = 30.9 MB/s, so the full 2.889 TB archive takes about 26 hours. The full scan then ran in 24.5 hours (see below) |
 | At least 90% of checked matches are about the park | Pending: hand-label `is_about_park` in `gdelt_precision_sample.csv` (100 random matches, seed 7) |
+
+## Full scan (2026-11-12 to 2026-11-13)
+
+`scan --start 2015-02-18 --end 2026-11-08 --workers 6` on one laptop, from 2026-11-12 10:31 to 2026-11-13 11:01
+(24.5 hours, 2,885 GB downloaded in that run, 32.7 MB/s on average), then one rerun of the same command to retry
+the 129 files that had not passed.
+
+| | Result |
+| --- | --- |
+| Files in the master list | 403,694 (2015-02-18 23:00 to 2026-11-08 23:45) |
+| Downloaded, MD5 verified and scanned | 403,565 |
+| Listed but not on the server (HTTP 404) | 128, also after the retry |
+| MD5 mismatch | 1: `20160508140000.gkg.csv.zip`. The master list gives 18,095 bytes and MD5 `09c4cc4fa6bd09367d1828eee3f21a2b`; the server serves 10,276,183 bytes (ETag `430824a461ebe6e411916009a1b3b24b`). The file is excluded, so 2016-05-08 14:00-14:15 has no records |
+| Data read | 2,888.87 GB zipped, 9,057.21 GB decompressed |
+| Records | 735,225,688 well-formed, 7,396 malformed lines |
+| Park matches | 636,731: YELL 280,730, YOSE 184,569, GRSM 60,776, GRCA 59,948, ZION 50,708 |
+
+Exports (`export` per shard, `pull_date=2026-11-13`). Shard s1 is exported with `--allow-incomplete` because of
+the one mismatched file; its daily file records it in `files_md5_mismatch`.
+
+| Shard | Dates | Files listed | Zipped GB | Records | Matches | matches_*.csv.gz |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| s1 | 2015-02-18 to 2017-02-28 | 70,896 | 744 | 198,722,433 | 174,316 | 16.1 MB |
+| s2 | 2017-03-01 to 2019-06-30 | 79,805 | 727 | 188,161,909 | 187,697 | 17.6 MB |
+| s3 | 2019-07-01 to 2023-03-31 | 128,166 | 732 | 181,431,236 | 151,322 | 15.6 MB |
+| s4 | 2023-04-01 to 2026-11-08 | 124,827 | 686 | 166,910,110 | 123,396 | 12.4 MB |
+
+The four daily files cover 4,282 calendar days. 17 days list no files at all: the GDELT outage from 2025-06-15
+to 2025-07-01. The export row counts equal the scan database: 636,731 matches, 403,694 audit rows, 735,225,688 records.
 
 ## Volume read in the test week
 
