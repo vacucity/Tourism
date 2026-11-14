@@ -13,11 +13,14 @@ UNION ALL SELECT 'reservation', COUNT(*) FROM reservation
 UNION ALL SELECT 'reservation_equipment', COUNT(*) FROM reservation_equipment;
 
 -- 2. Reconciliation against the source files: rows the loader counted in each file versus rows in
---    the table, per fiscal year and park. diff should be 0 on every row.
+--    the table, per fiscal year and park. diff should be 0 on every row. other_file_rows: rows already
+--    stored from an earlier fiscal-year file (see mysql/01_schema.sql).
 SELECT s.fiscal_year, s.park_code, s.source_rows, s.dropped_rows, s.rejected_rows, s.duplicate_rows,
-       s.source_rows - s.dropped_rows - s.rejected_rows - s.duplicate_rows AS expected_rows,
+       s.other_file_rows,
+       s.source_rows - s.dropped_rows - s.rejected_rows - s.duplicate_rows - s.other_file_rows AS expected_rows,
        COALESCE(m.n, 0) AS mysql_rows,
-       COALESCE(m.n, 0) - (s.source_rows - s.dropped_rows - s.rejected_rows - s.duplicate_rows) AS diff
+       COALESCE(m.n, 0) - (s.source_rows - s.dropped_rows - s.rejected_rows - s.duplicate_rows
+                           - s.other_file_rows) AS diff
 FROM source_file_park s
 LEFT JOIN (SELECT c.fiscal_year, f.park_code, SUM(c.n) AS n
            -- count per facility first: the index (fiscal_year, facility_id) answers it without
@@ -106,7 +109,7 @@ SELECT fiscal_year, inventory_type, COUNT(*) AS reservations,
 FROM reservation GROUP BY fiscal_year, inventory_type ORDER BY fiscal_year, reservations DESC;
 
 -- 6. Date ranges per fiscal year. A fiscal year runs October to September: FY2024 = 2023-10-01 to
---    2024-09-30. The FY2024 file is split by start date, the FY2017 file by order date.
+--    2024-09-30. The FY2015-FY2018 files are split by order date, the FY2019+ files by start date.
 --    ordered_after_start_utc_date: the order's UTC date is after the start date (e.g. walk-ups), allowed and
 --    only counted. An evening order in the park's time zone falls on the next UTC day, so this counts more
 --    than local time would (FY2024: 7,709 by UTC date, 3,911 by park time).

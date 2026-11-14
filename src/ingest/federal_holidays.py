@@ -11,13 +11,8 @@ from bs4 import BeautifulSoup
 from parks import START_YEAR
 
 URL = "https://www.opm.gov/policy-data-oversight/pay-leave/federal-holidays/"
-# Some sites block the default python-requests User-Agent, so look like a browser.
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36"
-    )
-}
+# Name the project honestly, as gdelt_gkg.py does
+HEADERS = {"User-Agent": "nps-tourism-lakehouse/0.1 (university course project)"}
 OUT_DIR = Path("data/landing/federal_holidays") / f"pull_date={date.today().isoformat()}"
 
 

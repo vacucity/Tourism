@@ -1,18 +1,22 @@
 """Replay Recreation.gov reservations for the five parks into the MySQL OLTP schema (mysql/01_schema.sql).
 
 Each fiscal-year zip is streamed in chunks and only NPS rows for the five parks are kept. The two file
-layouts (FY2015-FY2018 and FY2019+) are normalized to one, then each file's bookings are replayed in
-order-date order (one file after another, oldest fiscal year first): one transaction per ~2,000
-reservations, never splitting an order. Every write is an upsert on the table's primary key (reservation:
-on its UNIQUE reservation_id), so a rerun adds nothing. Rows that miss a required value or would break a
-CHECK go to a rejects CSV instead.
+layouts are told apart by their columns (entitytype: FY2015-FY2018, inventorytype: FY2019+) and normalized
+to one, then each file's bookings are replayed in order-time order (one file after another, oldest fiscal
+year first): one transaction per ~2,000 reservations, never splitting an order. Every write is an upsert on
+the table's primary key (reservation: on its UNIQUE reservation_id), so a rerun adds nothing. Rows that miss
+a required value, hold text that does not parse, or would break a CHECK go to a rejects CSV instead.
+
+A reservation is stored once, from the first file that lists it. Load the fiscal years oldest first into
+an empty database: the loader stops if asked to load a fiscal year older than one already loaded (reruns
+of loaded years are allowed in any order).
 
 Needs MYSQL_URL in .env at the repository root, for example
   MYSQL_URL=mysql+pymysql://nps_app:PASSWORD@localhost:3306/nps_tourism
 Use letters and digits in the password, or write @ as %40 and % as %25: an unescaped @ moves the rest of
 the password into the host name, which connection errors print.
 Run from any folder, after src/ingest/ridb_download.py:
-  uv run python src/load_mysql.py --fiscal-years 2017 2024
+  uv run python src/load_mysql.py --fiscal-years 2015 2016 2017 2018 2019 2020 2021 2022 2023 2024 2025
 """
 import argparse
 import os
@@ -33,12 +37,9 @@ from parks import PARKS  # noqa: E402
 ZIP_DIR = ROOT / "data" / "work" / "ridb"
 SCHEMA_SQL = ROOT / "mysql" / "01_schema.sql"
 
-# First fiscal year of the layout with inventorytype, discount and equipmentdescription. FY2015-FY2018
-# files hold the park name in RegionDescription, FY2019+ files in ParentLocation.
-NEW_LAYOUT_FROM = 2019
 PARK_OF = {info["name"]: code for code, info in PARKS.items()}
-# FY2017 files this Yellowstone permit program under its own name; FY2024 lists the same
-# facility (250849) under "Yellowstone National Park"
+# FY2015-FY2018 files list this Yellowstone permit program under its own name; FY2019+ files list the
+# same facility (250849) under "Yellowstone National Park"
 YELL_PROGRAM = "Yellowstone Non-Commercially Guided Snowmobile Access Program"
 PARK_OF[YELL_PROGRAM] = "YELL"
 
@@ -57,13 +58,25 @@ EQUIPMENT_COLUMNS = {
     "pickupcamper": "Pickup Camper", "largetentover9x12": "Large Tent Over 9X12",
     "smalltent": "Small Tent", "marinaboat": "Marina Boat",
 }
-WANTED = {
-    "historicalreservationid", "ordernumber", "agency", "regiondescription", "parentlocation", "park",
-    "sitetype", "usetype", "productid", "entitytype", "inventorytype", "facilityid", "facilityzip",
-    "facilitystate", "facilitylatitude", "facilitylongitude", "customerzip", "customerstate",
-    "customercountry", "tax", "usefee", "tranfee", "attrfee", "totalbeforetax", "discount", "totalpaid",
-    "startdate", "enddate", "orderdate", "numberofpeople", "equipmentdescription", "equipmentlength",
-} | set(EQUIPMENT_COLUMNS)
+# Columns every file has, then the columns of each layout
+COMMON = {"historicalreservationid", "ordernumber", "agency", "park", "sitetype", "usetype", "productid",
+          "facilityid", "facilityzip", "facilitystate", "facilitylatitude", "facilitylongitude", "customerzip",
+          "tax", "usefee", "tranfee", "attrfee", "totalbeforetax", "totalpaid", "startdate", "enddate",
+          "orderdate", "numberofpeople"}
+OLD_LAYOUT = {"entitytype", "regiondescription"} | set(EQUIPMENT_COLUMNS)
+NEW_LAYOUT = {"inventorytype", "parentlocation", "discount", "equipmentdescription", "equipmentlength"}
+WANTED = COMMON | OLD_LAYOUT | NEW_LAYOUT | {"customerstate", "customercountry"}  # state, country: FY2015-FY2020 only
+
+# Order times. FY2015-FY2017 give a date only (stored at 00:00). FY2018 gives Eastern local time: on the days
+# campgrounds release, orders peak at 10:00 in FY2018 and at 14:00-15:00 UTC in FY2019+, the Recreation.gov
+# release time of 10:00 Eastern. FY2019-FY2021 times have no zone marker but are UTC: the same order in the
+# FY2021 and FY2022 (Z) files differs by under 1 ms. FY2022+ times end in Z.
+OLD_SYSTEM_ZONE = "America/New_York"
+# Old-system order numbers ('2-36409369': one digit, a dash, 6 to 8 digits). FY2019 and FY2020 files hold
+# 4,458 rows with such numbers, 4,454 of them bookings of the FY2015-FY2018 files under new reservation and
+# product ids.
+OLD_ORDER_FORM = r"^\d-\d{6,8}$"
+MAX_LENGTH_FT = 999_999.99  # largest value of reservation_equipment.length_ft DECIMAL(8,2)
 
 MONEY = ["tax", "use_fee", "tran_fee", "attr_fee", "total_before_tax", "discount", "total_paid"]
 ORDER_COLS = ["order_number", "ordered_at", "customer_zip", "customer_state", "customer_country"]
@@ -72,7 +85,9 @@ RES_COLS = ["reservation_id", "order_number", "order_line", "facility_id", "prod
 EQUIP_COLS = ["reservation_id", "equipment_type", "quantity", "length_ft"]
 FAC_COLS = ["facility_id", "park_code", "facility_name", "facility_zip", "state_code", "latitude",
             "longitude", "updated_fy"]
+FAC_ATTRS = ["facility_name", "facility_zip", "state_code", "latitude", "longitude"]
 PROD_COLS = ["facility_id", "product_id", "use_type"]
+COUNT_COLS = ["source_rows", "dropped_rows", "rejected_rows", "duplicate_rows", "other_file_rows"]
 
 
 def blank_to_na(s: pd.Series) -> pd.Series:
@@ -80,12 +95,28 @@ def blank_to_na(s: pd.Series) -> pd.Series:
 
 
 def num(s: pd.Series) -> pd.Series:
-    return pd.to_numeric(blank_to_na(s))
+    """Text -> number; text that is not a number becomes NaN (read_year rejects the row)."""
+    return pd.to_numeric(blank_to_na(s), errors="coerce")
 
 
 def utc(s: pd.Series) -> pd.Series:
-    """'2016-10-02', '2018-06-21 11:00:00' or '2024-08-04T02:13:37.018512Z' -> naive timestamps (UTC when the source gives a zone)."""
-    return pd.to_datetime(blank_to_na(s), utc=True, format="ISO8601").dt.tz_convert(None)
+    """'2016-10-02', '2018-10-05 14:25:51.283' or '2024-08-04T02:13:37.018512Z' -> naive timestamps (UTC when
+    the source gives a zone, the time as written otherwise). Text that is not a date becomes NaT."""
+    return pd.to_datetime(blank_to_na(s), utc=True, format="ISO8601", errors="coerce").dt.tz_convert(None)
+
+
+def eastern_to_utc(s: pd.Series, t: pd.Series) -> pd.Series:
+    """Old-layout order times: values with a time of day (FY2018) are Eastern local time and become UTC.
+    Date-only values (FY2015-FY2017) stay at 00:00. In the repeated hour of 2017-11-05 a time is read as
+    daylight time (EDT)."""
+    has_time = (s.str.len() > 10) & t.notna()
+    if not has_time.any():
+        return t
+    local = t[has_time].dt.tz_localize(OLD_SYSTEM_ZONE, ambiguous=np.ones(int(has_time.sum()), dtype=bool),
+                                       nonexistent="shift_forward")
+    t = t.copy()
+    t[has_time] = local.dt.tz_convert(None)
+    return t
 
 
 def state_code(value: str) -> str | None:
@@ -99,16 +130,41 @@ def state_code(value: str) -> str | None:
     return STATE_CODES[value]
 
 
-def normalize(raw: pd.DataFrame, year: int) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """One chunk of kept rows in either layout -> (reservations, facilities, equipment) in one layout."""
-    new_layout = year >= NEW_LAYOUT_FROM
+def detect_layout(columns: list[str], year: int) -> dict:
+    """The file layout from the columns it has: FY2015-FY2018 files have entitytype and hold the park name
+    in RegionDescription, FY2019+ files have inventorytype and hold it in ParentLocation."""
+    cols = set(columns)
+    if "inventorytype" in cols:
+        layout = {"new": True, "inventory": "inventorytype", "location": "parentlocation", "need": NEW_LAYOUT}
+    elif "entitytype" in cols:
+        layout = {"new": False, "inventory": "entitytype", "location": "regiondescription", "need": OLD_LAYOUT}
+    else:
+        raise SystemExit(f"FY{year}: neither entitytype nor inventorytype in the header: {columns}")
+    missing = sorted((COMMON | layout["need"]) - cols)
+    if missing:
+        raise SystemExit(f"FY{year}: columns missing for the {'new' if layout['new'] else 'old'} layout: {missing}")
+    return layout
+
+
+def normalize(raw: pd.DataFrame, layout: dict) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """One chunk of kept rows in either layout -> (reservations, facilities, equipment) in one layout.
+    reservations also carries `unparseable`: the row holds text that does not parse as a number or date."""
+    new_layout = layout["new"]
     r = pd.DataFrame(index=raw.index)
     r["reservation_id"] = raw["historicalreservationid"].str.strip()
     r["src_row"] = raw.index  # row number in the CSV (read_csv chunks number rows across the whole file)
+    unparseable = pd.Series(False, index=raw.index)
+
+    def parsed(src: str, value: pd.Series) -> pd.Series:
+        nonlocal unparseable
+        unparseable |= (raw[src].str.strip() != "") & value.isna()
+        return value
+
     if new_layout:
-        # "0610465289-3" is line 3 of order 0610465289: the lines share order time and customer ZIP
-        parts = raw["ordernumber"].str.rsplit("-", n=1, expand=True)
-        r["order_number"] = parts[0]
+        # "0610465289-3" is line 3 of order 0610465289: the lines share order time and customer ZIP. An
+        # old-system number such as "2-36409369" is a whole order number: it keeps order_line NULL.
+        parts = raw["ordernumber"].str.extract(r"^(\d{2,})-(\d{1,4})$")
+        r["order_number"] = parts[0].where(parts[0].notna(), raw["ordernumber"])
         r["order_line"] = pd.to_numeric(parts[1]).astype("Int32")
     else:
         r["order_number"] = raw["ordernumber"]
@@ -117,87 +173,116 @@ def normalize(raw: pd.DataFrame, year: int) -> tuple[pd.DataFrame, pd.DataFrame,
     r["facility_id"] = raw["facilityid"]
     r["product_id"] = raw["productid"]
     r["use_type"] = raw["usetype"].mask(raw["usetype"].isin(["", "None"]))  # product attribute
-    r["inventory_type"] = raw["inventorytype" if new_layout else "entitytype"]
+    r["inventory_type"] = raw[layout["inventory"]]
     r["site_type"] = blank_to_na(raw["sitetype"])
     # Dates are kept as the UTC date: the few FY2024 rows with a time (07:00-20:00 UTC) are local
-    # midnight or noon, so the UTC date is the local date
-    r["start_date"] = utc(raw["startdate"]).dt.normalize()
-    r["end_date"] = utc(raw["enddate"]).dt.normalize()
-    r["ordered_at"] = utc(raw["orderdate"])
-    r["number_of_people"] = num(raw["numberofpeople"]).astype("Int32")
+    # midnight or noon, so the UTC date is the local date. FY2018-FY2021 dates have no zone: the date as written.
+    r["start_date"] = parsed("startdate", utc(raw["startdate"])).dt.normalize()
+    r["end_date"] = parsed("enddate", utc(raw["enddate"])).dt.normalize()
+    ordered = parsed("orderdate", utc(raw["orderdate"]))
+    r["ordered_at"] = ordered if new_layout else eastern_to_utc(raw["orderdate"], ordered)
+    r["number_of_people"] = parsed("numberofpeople", num(raw["numberofpeople"])).astype("Int32")
     for col, src in [("tax", "tax"), ("use_fee", "usefee"), ("tran_fee", "tranfee"), ("attr_fee", "attrfee"),
                      ("total_before_tax", "totalbeforetax"), ("total_paid", "totalpaid")]:
-        r[col] = num(raw[src]).round(2)
+        r[col] = parsed(src, num(raw[src])).round(2)
     # FY2019+ files store the discount as a negative number; it is kept as a positive amount
     # (0 - x rather than -x, so a zero discount is 0.0 and not -0.0)
-    r["discount"] = (0 - num(raw["discount"])).round(2) if new_layout else np.nan
+    r["discount"] = (0 - parsed("discount", num(raw["discount"]))).round(2) if new_layout else np.nan
     zip_ = raw["customerzip"].str.strip()
     r["customer_zip"] = zip_.mask((zip_ == "") | (zip_.str.len() > 10))  # longer ones are free text
     r["zip_too_long"] = zip_.str.len() > 10
     if "customerstate" in raw.columns:
         r["customer_state"] = raw["customerstate"].mask(raw["customerstate"].isin(["", "UNKN"]))
         r["customer_country"] = raw["customercountry"].mask(raw["customercountry"].isin(["", "UNKN"]))
-    else:  # the FY2024 file has no customer state or country
+    else:  # FY2021+ files have no customer state or country
         r["customer_state"] = r["customer_country"] = None
 
+    lat = num(raw["facilitylatitude"]).round(6)
+    lon = num(raw["facilitylongitude"]).round(6)
+    # 300015, 300016 (FY2020-FY2021) and 4675323 (FY2022-FY2025) give a negative latitude and a positive
+    # longitude; every five-park facility lies north of the equator and west of Greenwich
+    coords_ok = (lat > 0) & (lon < 0)
     fac = pd.DataFrame({
         "facility_id": raw["facilityid"],
         "park_code": raw["park_code"],
         "facility_name": raw["park"].str.strip(),  # the "park" column holds the facility name
         "facility_zip": blank_to_na(raw["facilityzip"]),
         "state_code": raw["facilitystate"].map({v: state_code(v) for v in raw["facilitystate"].unique()}),
-        "latitude": num(raw["facilitylatitude"]).round(6),
-        "longitude": num(raw["facilitylongitude"]).round(6),
-    }).drop_duplicates()
+        "latitude": lat.where(coords_ok),
+        "longitude": lon.where(coords_ok),
+        "ordered_at": r["ordered_at"], "src_row": r["src_row"],  # which attribute set is the newest
+    })
 
     if new_layout:
         desc = raw["equipmentdescription"].str.strip().str.rstrip("`")
-        length = num(raw["equipmentlength"])
+        length = parsed("equipmentlength", num(raw["equipmentlength"]))
         has = desc != ""
+        length_ft = length[has].where(length[has] > 0).round(2)
         equip = pd.DataFrame({"reservation_id": r.loc[has, "reservation_id"],
                               "src_row": r.loc[has, "src_row"], "equipment_type": desc[has],
                               "quantity": pd.Series(pd.NA, index=desc[has].index, dtype="Int32"),
-                              "length_ft": length[has].where(length[has] > 0).round(2)})
+                              # a length that does not fit DECIMAL(8,2) (12 FY2020-FY2023 rows) is not a length
+                              "length_ft": length_ft.mask(length_ft > MAX_LENGTH_FT),
+                              "length_too_big": length_ft > MAX_LENGTH_FT})
     else:
         pieces = []
         for col, label in EQUIPMENT_COLUMNS.items():
-            q = num(raw[col])
+            q = parsed(col, num(raw[col]))
             has = q.notna() & (q > 0)
             pieces.append(pd.DataFrame({"reservation_id": r.loc[has, "reservation_id"],
                                         "src_row": r.loc[has, "src_row"], "equipment_type": label,
-                                        "quantity": q[has].astype("Int32"), "length_ft": np.nan}))
+                                        "quantity": q[has].astype("Int32"), "length_ft": np.nan,
+                                        "length_too_big": False}))
         equip = pd.concat(pieces)
+    r["unparseable"] = unparseable
     return r, fac, equip
+
+
+def newest_attributes(fac: pd.DataFrame) -> pd.DataFrame:
+    """One row per (facility, attribute set): the latest order time and CSV row that shows it."""
+    return (fac.sort_values(["ordered_at", "src_row"], kind="stable", na_position="first")
+               .drop_duplicates(["facility_id", "park_code"] + FAC_ATTRS, keep="last"))
+
+
+def csv_member(zf: zipfile.ZipFile) -> zipfile.ZipInfo:
+    """The single CSV of a RIDB zip (FY2018 also holds a README.TXT)."""
+    members = [m for m in zf.infolist() if m.filename.lower().endswith(".csv")]
+    if len(members) != 1:
+        raise SystemExit(f"{zf.filename}: expected one CSV, found {[m.filename for m in zf.infolist()]}")
+    return members[0]
 
 
 def read_year(year: int, zip_path: Path) -> dict:
     """Stream one zip, keep the five parks, normalize, and count every row that is not loaded."""
     t0 = time.time()
     with zipfile.ZipFile(zip_path) as zf:
-        (member,) = zf.infolist()  # each RIDB zip holds a single CSV
-        chunks = pd.read_csv(zf.open(member), dtype=str, keep_default_na=False, chunksize=250_000,
-                             usecols=lambda c: c.lower() in WANTED, encoding_errors="replace")
+        member = csv_member(zf)
+        header = pd.read_csv(zf.open(member), nrows=0, encoding_errors="replace").columns
+        header = [c.strip().lower() for c in header]
+        layout = detect_layout(header, year)
+        chunks = pd.read_csv(zf.open(member), dtype=str, keep_default_na=False, chunksize=50_000,
+                             usecols=lambda c: c.strip().lower() in WANTED, encoding_errors="replace")
         rows_read = program_rows = 0
         program_facilities = set()
         res_parts, fac_parts, eq_parts, rejects = [], [], [], []
         source, dropped = pd.Series(0, index=list(PARKS)), pd.Series(0, index=list(PARKS))
         for chunk in chunks:
-            chunk.columns = chunk.columns.str.lower()
+            chunk.columns = chunk.columns.str.strip().str.lower()
             rows_read += len(chunk)
-            location = chunk["parentlocation" if year >= NEW_LAYOUT_FROM else "regiondescription"]
+            location = chunk[layout["location"]]
             raw = chunk.assign(park_code=location.map(PARK_OF)).dropna(subset=["park_code"])
             is_program = location[raw.index] == YELL_PROGRAM
             program_rows += int(is_program.sum())
             program_facilities.update(raw.loc[is_program, "facilityid"])
             source = source.add(raw["park_code"].value_counts(), fill_value=0)
             # Rows of any agency other than NPS, and DONATION rows, are not park reservations
-            inventory = raw["inventorytype" if year >= NEW_LAYOUT_FROM else "entitytype"]
+            inventory = raw[layout["inventory"]]
             drop = (raw["agency"] != "NPS") | (inventory == "DONATION")
             dropped = dropped.add(raw.loc[drop, "park_code"].value_counts(), fill_value=0)
             raw = raw[~drop]
             if raw.empty:
                 continue
-            r, fac, equip = normalize(raw, year)
+            r, fac, equip = normalize(raw, layout)
             money = r[MONEY]
             bad = pd.Series("", index=r.index)
             bad = bad.mask(r["ordered_at"].isna(), "missing order date")
@@ -207,13 +292,17 @@ def read_year(year: int, zip_path: Path) -> dict:
             # total_before_tax is not checked: 5 FY2024 backcountry permits have it negative and total_paid positive
             bad = bad.mask((money.drop(columns="total_before_tax") < 0).any(axis=1), "negative amount")
             bad = bad.mask(r["end_date"] < r["start_date"], "end date before start date")
+            # FY2021: 27 rows give the order time 0001-01-01 (DATETIME starts at year 1000)
+            bad = bad.mask(r["ordered_at"] < pd.Timestamp("2000-01-01"), "order date before 2000")
+            # FY2022 and FY2023: 4 rows whose customer ZIP holds a stray quote, which shifts later columns
+            bad = bad.mask(r["unparseable"], "unparseable value")
             if (bad != "").any():
                 rejects.append(raw.loc[bad != ""].assign(reject_reason=bad[bad != ""]))
-            res_parts.append(r[bad == ""])
-            fac_parts.append(fac)
+            res_parts.append(r[bad == ""].drop(columns="unparseable"))
+            fac_parts.append(newest_attributes(fac[bad == ""]))
             eq_parts.append(equip)
     res = pd.concat(res_parts, ignore_index=True)
-    fac = pd.concat(fac_parts).drop_duplicates()
+    fac = newest_attributes(pd.concat(fac_parts))
     equip = pd.concat(eq_parts, ignore_index=True)
     rej = pd.concat(rejects) if rejects else pd.DataFrame(columns=["park_code", "reject_reason"])
     rejects_path = zip_path.parent / f"rejects_FY{year}.csv"
@@ -222,12 +311,18 @@ def read_year(year: int, zip_path: Path) -> dict:
     elif rejects_path.exists():
         rejects_path.unlink()  # from an earlier run of different code
 
-    # Replay order: by order time, keeping each order's lines together. A repeated reservation id (FY2017: 70 ids
-    # listed under two products, 1 listed twice under one product with two customer ZIPs) keeps the row with the
-    # lowest product id, or the first row in the file on a tie.
+    # Replay order: by order time, keeping each order's lines together. A repeated reservation id keeps the
+    # first row in this order: the earliest order time (FY2018: the booking before a site change), then the
+    # lowest product id as text (FY2015: the Entrance row of an Entrance + LOTTERY pair, FY2017: 70 ids listed
+    # under two products, FY2025: 59 ids), then the first row in the file (FY2025: the other 622 of the 681
+    # ids listed with two start dates).
     replay_order = ["ordered_at", "order_number", "order_line", "reservation_id", "product_id"]
     res = res.sort_values(replay_order, kind="stable", ignore_index=True)
-    dup = res["reservation_id"].duplicated()
+    # An id '<id>__<its facility id>' whose '<id>' is also in the file repeats that reservation (FY2019: 29
+    # Yellowstone snowmobile permits on the same order line). QUEUE_LOTTERY ids carry the same suffix alone.
+    base = res["reservation_id"].str.split("__", n=1).str[0]
+    repeats_base = (res["reservation_id"] == base + "__" + res["facility_id"]) & base.isin(res["reservation_id"])
+    dup = res["reservation_id"].where(~repeats_base, base).duplicated()
     duplicates = res.loc[dup, "park_code"].value_counts()
     res = res[~dup].reset_index(drop=True)
 
@@ -237,43 +332,119 @@ def read_year(year: int, zip_path: Path) -> dict:
         res[ORDER_COLS[1:]] = res.groupby("order_number")[ORDER_COLS[1:]].transform("first")
         res = res.sort_values(replay_order, kind="stable", ignore_index=True)
 
-    # facility_id -> park and attributes, (facility_id, product_id) -> use_type: must hold within a file
+    # facility_id -> park must hold within a file. Other facility attributes take the values of the row with
+    # the latest order time (FY2025 changes the address or coordinates of 19 facilities during the year).
     fac = fac[fac["facility_id"].isin(res["facility_id"])]
-    if fac["facility_id"].duplicated().any():
-        raise SystemExit(f"FY{year}: facilities with conflicting attributes:\n"
-                         f"{fac[fac['facility_id'].duplicated(keep=False)].to_string()}")
-    prod = res[PROD_COLS].drop_duplicates()
-    if prod.duplicated(["facility_id", "product_id"]).any():
-        raise SystemExit(f"FY{year}: products with more than one use_type")
+    parks_per_facility = fac.groupby("facility_id")["park_code"].nunique()
+    if (parks_per_facility > 1).any():
+        raise SystemExit(f"FY{year}: facilities listed under two parks:\n"
+                         f"{fac[fac['facility_id'].isin(parks_per_facility[parks_per_facility > 1].index)]}")
+    changed_facilities = sorted(fac.loc[fac["facility_id"].duplicated(), "facility_id"].unique())
+    fac = fac.drop_duplicates("facility_id", keep="last").drop(columns=["ordered_at", "src_row"])
     fac["updated_fy"] = year
     res["fiscal_year"] = year
 
     equip = equip[equip["src_row"].isin(res["src_row"])]  # equipment of the kept row only
     equip = equip.drop_duplicates(["reservation_id", "equipment_type"])
-    position = pd.Series(np.arange(len(res)), index=res["reservation_id"])
-    equip = equip.assign(pos=equip["reservation_id"].map(position)).dropna(subset=["pos"])
-    equip = equip.sort_values("pos", kind="stable", ignore_index=True)  # same order as the replay
 
     counts = pd.DataFrame({"source_rows": source, "dropped_rows": dropped,
                            "rejected_rows": rej["park_code"].value_counts(),
                            "duplicate_rows": duplicates}).reindex(list(PARKS)).fillna(0).astype(int)
-    counts["expected"] = res["park_code"].value_counts().reindex(list(PARKS)).fillna(0).astype(int)
-    # Every source row is accounted for: loaded, dropped, rejected or a repeated id
-    accounted = counts["source_rows"] - counts["dropped_rows"] - counts["rejected_rows"] - counts["duplicate_rows"]
-    if not counts["expected"].equals(accounted):
-        raise SystemExit(f"FY{year}: row accounting does not add up:\n{counts}")
-    print(f"FY{year}: read {rows_read:,} rows from {member.filename} in {time.time() - t0:.0f} s; "
+    counts["other_file_rows"] = 0  # set by cross_file_rules
+    print(f"FY{year}: read {rows_read:,} rows from {member.filename} in {time.time() - t0:.0f} s "
+          f"({'new' if layout['new'] else 'old'} layout, {len(header)} columns); "
           f"kept {len(res):,} reservations, {res['order_number'].nunique():,} orders, {len(fac)} facilities, "
-          f"{len(prod):,} products, {len(equip):,} equipment rows")
+          f"{len(equip):,} equipment rows")
     print(f"  rejected {len(rej)} rows {rej['reject_reason'].value_counts().to_dict()} -> "
           f"{rejects_path.name if len(rej) else 'no rejects file'}; repeated reservation ids {int(dup.sum())}; "
           f"orders with conflicting time/location {conflicts}; customer ZIPs over 10 characters set to NULL "
-          f"{int(res['zip_too_long'].sum())}; rows named '{YELL_PROGRAM}' {program_rows} "
+          f"{int(res['zip_too_long'].sum())}; equipment lengths over {MAX_LENGTH_FT:,} set to NULL "
+          f"{int(equip['length_too_big'].sum())}; facilities whose attributes change within the file "
+          f"{changed_facilities}; rows named '{YELL_PROGRAM}' {program_rows} "
           f"(facilities {sorted(program_facilities)})")
-    return {"year": year, "res": res, "fac": fac, "prod": prod, "equip": equip, "counts": counts,
+    return {"year": year, "new_layout": layout["new"], "res": res, "fac": fac, "equip": equip, "counts": counts,
             "file": {"fiscal_year": year, "zip_name": zip_path.name, "csv_name": member.filename,
                      "csv_bytes": member.file_size, "rows_read": rows_read,
                      "completed_at": None}}  # reset at the start of every load, set when the replay finishes
+
+
+def lookup(conn, sql: str, keys, params: tuple = (), batch: int = 5000) -> list[tuple]:
+    """Run `sql` (with one IN ({keys}) list) for the keys in batches; return all rows."""
+    keys = list(keys)
+    out = []
+    for i in range(0, len(keys), batch):
+        part = keys[i:i + batch]
+        out += conn.exec_driver_sql(sql.format(keys=", ".join(["%s"] * len(part))), tuple(part) + params).fetchall()
+    return out
+
+
+def cross_file_rules(engine, data: dict) -> None:
+    """A reservation is stored once, from the first file that lists it (fiscal years load oldest first):
+    - a row whose reservation id is already stored from another fiscal-year file is not loaded (FY2018 lists
+      435 FY2016/FY2017 bookings again with a later order time, FY2020-FY2022 4 bookings moved to the next year);
+    - an FY2019+ row with an old-system order number that a reservation from another file already uses is
+      not loaded (4,433 FY2019 and 13 FY2020 rows repeat FY2015-FY2018 bookings under new reservation ids);
+    - an order that already holds reservations from an earlier file keeps that file's order time and
+      customer values; this file's lines of the order take them over before the replay is sorted.
+    Skipped rows are counted in source_file_park.other_file_rows."""
+    year, res = data["year"], data["res"]
+    t0 = time.time()
+    with engine.connect() as conn:
+        stored = dict(lookup(conn, "SELECT reservation_id, fiscal_year FROM reservation "
+                                   "WHERE reservation_id IN ({keys}) AND fiscal_year <> %s",
+                             res["reservation_id"], (year,)))
+        newer = {k: v for k, v in stored.items() if v > year}
+        if newer:
+            raise SystemExit(f"FY{year}: {len(newer)} reservation ids are stored from a newer fiscal year "
+                             f"({sorted(set(newer.values()))}): load fiscal years oldest first into an empty database")
+        # old-system order numbers are the norm in the old layout: the rule is for new-layout files only
+        old_form = (res.loc[res["order_number"].str.match(OLD_ORDER_FORM), "order_number"].unique()
+                    if data["new_layout"] else [])
+        migrated = {o for (o,) in lookup(conn, "SELECT DISTINCT order_number FROM reservation "
+                                               "WHERE order_number IN ({keys}) AND fiscal_year <> %s",
+                                         old_form, (year,))}
+        skip = res["reservation_id"].isin(stored.keys()) | res["order_number"].isin(migrated)
+        data["counts"]["other_file_rows"] = (res.loc[skip, "park_code"].value_counts()
+                                             .reindex(list(PARKS)).fillna(0).astype(int))
+        res = res[~skip].reset_index(drop=True)
+        earlier = lookup(conn, "SELECT o.order_number, o.ordered_at, o.customer_zip, o.customer_state, "
+                               "o.customer_country FROM booking_order o WHERE o.order_number IN ({keys}) "
+                               "AND EXISTS (SELECT 1 FROM reservation r WHERE r.order_number = o.order_number "
+                               "AND r.fiscal_year < %s)", res["order_number"].unique(), (year,))
+    if earlier:
+        old = pd.DataFrame(earlier, columns=ORDER_COLS).set_index("order_number")
+        hit = res["order_number"].isin(old.index)
+        for col in ORDER_COLS[1:]:
+            values = res.loc[hit, "order_number"].map(old[col])
+            if col == "ordered_at":
+                values = pd.to_datetime(values)
+            res.loc[hit, col] = values.where(values.notna(), None) if col != "ordered_at" else values
+        res = res.sort_values(["ordered_at", "order_number", "order_line", "reservation_id", "product_id"],
+                              kind="stable", ignore_index=True)
+    data["res"] = res
+    print(f"  cross-file: {int(skip.sum())} rows already stored from another file "
+          f"({int(res.shape[0])} left; ids {len(stored)}, old-system orders {len(migrated)}); "
+          f"{len(earlier)} orders keep the values of an earlier file; {time.time() - t0:.0f} s")
+
+
+def finish(data: dict) -> None:
+    """Reference rows and counts of the reservations that will be replayed; equipment in replay order."""
+    res, equip, counts, year = data["res"], data["equip"], data["counts"], data["year"]
+    data["fac"] = data["fac"][data["fac"]["facility_id"].isin(res["facility_id"])]
+    prod = res[PROD_COLS].drop_duplicates()
+    if prod.duplicated(["facility_id", "product_id"]).any():
+        raise SystemExit(f"FY{year}: products with more than one use_type")
+    data["prod"] = prod
+    position = pd.Series(np.arange(len(res)), index=res["reservation_id"])
+    equip = equip.assign(pos=equip["reservation_id"].map(position)).dropna(subset=["pos"])
+    data["equip"] = equip.sort_values("pos", kind="stable", ignore_index=True)  # same order as the replay
+    counts["expected"] = res["park_code"].value_counts().reindex(list(PARKS)).fillna(0).astype(int)
+    # Every source row is accounted for: loaded, dropped, rejected, a repeated id, or stored from another file
+    accounted = counts["source_rows"] - counts[COUNT_COLS[1:]].sum(axis=1)
+    if not counts["expected"].equals(accounted):
+        raise SystemExit(f"FY{year}: row accounting does not add up:\n{counts}")
+    print(f"  replaying {len(res):,} reservations, {res['order_number'].nunique():,} orders, "
+          f"{len(data['fac'])} facilities, {len(prod):,} products, {len(data['equip']):,} equipment rows")
 
 
 def records(frame: pd.DataFrame) -> list[tuple]:
@@ -287,12 +458,14 @@ def records(frame: pd.DataFrame) -> list[tuple]:
     return list(out.where(out.notna(), None).itertuples(index=False, name=None))
 
 
-def upsert(conn, table: str, cols: list[str], rows: list[tuple], keys: list[str]) -> None:
-    """One multi-row INSERT ... ON DUPLICATE KEY UPDATE: new keys are added, existing keys take the new values."""
+def upsert(conn, table: str, cols: list[str], rows: list[tuple], keys: list[str], keep: tuple = ()) -> None:
+    """One multi-row INSERT ... ON DUPLICATE KEY UPDATE: new keys are added, existing keys take the new values
+    (a column named in `keep` keeps its stored value where the new value is NULL)."""
     if not rows:
         return
     one = "(" + ", ".join(["%s"] * len(cols)) + ")"
-    updates = ", ".join(f"{c} = new.{c}" for c in cols if c not in keys)
+    updates = ", ".join(f"{c} = COALESCE(new.{c}, {table}.{c})" if c in keep else f"{c} = new.{c}"
+                        for c in cols if c not in keys)
     sql = (f"INSERT INTO {table} ({', '.join(cols)}) VALUES {', '.join([one] * len(rows))} "
            f"AS new ON DUPLICATE KEY UPDATE {updates}")
     conn.exec_driver_sql(sql, tuple(v for row in rows for v in row))
@@ -333,8 +506,11 @@ def load_year(engine, data: dict, batch: int) -> None:
                                                         (year,)).fetchall()}
             fac = data["fac"][~data["fac"]["facility_id"].isin(newer)]
             upsert(conn, "facility", FAC_COLS, records(fac[FAC_COLS]), ["facility_id"])
-            upsert(conn, "product", PROD_COLS, records(data["prod"]), ["facility_id", "product_id"])
-            counts = data["counts"].drop(columns="expected").reset_index(names="park_code")
+            # A product's use type is the same in every file that gives one. FY2018 gives none for 6 products
+            # that FY2015-FY2017 list as Day (306809, 375920-375923, 455771): an empty value keeps the stored one
+            upsert(conn, "product", PROD_COLS, records(data["prod"]), ["facility_id", "product_id"],
+                   keep=("use_type",))
+            counts = data["counts"][COUNT_COLS].reset_index(names="park_code")
             counts.insert(0, "fiscal_year", year)
             upsert(conn, "source_file_park", list(counts.columns), records(counts), ["fiscal_year", "park_code"])
 
@@ -352,6 +528,8 @@ def load_year(engine, data: dict, batch: int) -> None:
 
         last = time.time()
         for b, (lo, hi) in enumerate(zip(cuts[:-1], cuts[1:])):
+            if lo == hi:  # a file whose rows are all stored from other files
+                continue
             part = res.iloc[lo:hi]
             e_lo, e_hi = np.searchsorted(eq_pos, lo), np.searchsorted(eq_pos, hi)
             with conn.begin():  # one transaction: the orders, their reservations, their equipment
@@ -380,13 +558,13 @@ def reconcile(engine, data: dict) -> None:
     table = data["counts"].assign(in_mysql=[in_db.get(code, 0) for code in PARKS])
     table["diff"] = table["in_mysql"] - table["expected"]
     table.loc["total"] = table.sum()
-    print(f"FY{data['year']} reconciliation (expected = source - dropped - rejected - duplicate):")
+    print(f"FY{data['year']} reconciliation (expected = source - dropped - rejected - duplicate - other file):")
     print(table.to_string())
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--fiscal-years", type=int, nargs="+", required=True, help="e.g. 2017 2024")
+    ap.add_argument("--fiscal-years", type=int, nargs="+", required=True, help="e.g. 2015 2016 ... 2025")
     ap.add_argument("--batch", type=int, default=2000, help="reservations per transaction")
     ap.add_argument("--zip-dir", default=str(ZIP_DIR), help="folder with reservations{YEAR}.zip")
     args = ap.parse_args()
@@ -400,12 +578,23 @@ def main() -> None:
     with engine.connect() as conn:
         before = table_counts(conn)
         run_start = conn.exec_driver_sql("SELECT NOW(6)").scalar()
+        loaded = {y for (y,) in conn.exec_driver_sql("SELECT fiscal_year FROM source_file").fetchall()}
 
-    for year in sorted(set(args.fiscal_years)):  # oldest first, so the newest facility attributes win
+    years = sorted(set(args.fiscal_years))  # oldest first, so the newest facility attributes win
+    for year in years:
         zip_path = Path(args.zip_dir) / f"reservations{year}.zip"
         if not zip_path.exists():
             raise SystemExit(f"{zip_path} not found: run src/ingest/ridb_download.py --fiscal-years {year}")
-        data = read_year(year, zip_path)
+    first_new = [y for y in years if y not in loaded]
+    if first_new and loaded and min(first_new) < max(loaded):
+        raise SystemExit(f"FY{min(first_new)} is not loaded yet but FY{max(loaded)} is: a reservation is stored "
+                         f"from the first file that lists it, so fiscal years load oldest first. "
+                         f"Load into an empty database, oldest year first.")
+
+    for year in years:
+        data = read_year(year, Path(args.zip_dir) / f"reservations{year}.zip")
+        cross_file_rules(engine, data)
+        finish(data)
         t0 = time.time()
         load_year(engine, data, args.batch)
         print(f"FY{year}: replay took {time.time() - t0:.0f} s")

@@ -1,11 +1,13 @@
 """Download Recreation.gov historical reservation files (one zip per fiscal year) from RIDB.
 
-A fiscal year runs October to September. The FY2024 file holds the reservations that start in Oct 2023 .. Sep 2024,
-the FY2017 file those ordered in Oct 2016 .. Sep 2017. Each zip holds one CSV for every agency and facility.
+A fiscal year runs October to September. The FY2015-FY2018 files hold the reservations ordered in the fiscal
+year (FY2017: Oct 2016 .. Sep 2017), the FY2019+ files those that start in it (FY2024: Oct 2023 .. Sep 2024).
+Each zip holds one CSV for every agency and facility (FY2018 also holds a README.TXT). FY2015-FY2025 are
+3.5 GB of zips; FY2026 is not published yet (HTTP 403).
 A file already on disk with the size the server reports is skipped, so reruns download nothing.
 
 Run from any folder (paths are relative to the repository root):
-  uv run python src/ingest/ridb_download.py --fiscal-years 2017 2024
+  uv run python src/ingest/ridb_download.py --fiscal-years 2015 2016 2017 2018 2019 2020 2021 2022 2023 2024 2025
 """
 import argparse
 import time
@@ -16,9 +18,8 @@ import requests
 ROOT = Path(__file__).resolve().parents[2]  # repository root
 OUT_DIR = ROOT / "data" / "work" / "ridb"
 URL = "https://ridb.recreation.gov/downloads/reservations{year}.zip"
-# The server answers plain scripts too, but a browser-like agent is what the download page expects
-HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                         "(KHTML, like Gecko) Chrome/130.0 Safari/537.36"}
+# Name the project honestly, as gdelt_gkg.py does
+HEADERS = {"User-Agent": "nps-tourism-lakehouse/0.1 (university course project)"}
 
 
 def download(year: int, out_dir: Path) -> Path | None:
