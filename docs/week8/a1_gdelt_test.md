@@ -8,7 +8,7 @@ with `src/ingest/gdelt_gkg.py` (6 workers, one laptop).
 | Every checksum verifies | 672 of 672 files downloaded, all 672 MD5 checksums match the master file list |
 | A rerun reproduces the counts | A second scan into a separate database gave identical totals and identical per-file rows and matches: 914,630 records, 388 matches, 0 differences |
 | Projected full scan takes 7 days or less | 3.73 GB in about 121 s = 30.9 MB/s, so the full 2.889 TB archive takes about 26 hours. The full scan then ran in 24.5 hours (see below) |
-| At least 90% of checked matches are about the park | Pending: hand-label `is_about_park` in `gdelt_precision_sample.csv` (100 random matches, seed 7) |
+| At least 90% of checked matches are about the park | **Not met: 34 of 100 (34%).** With the refined rule below (park name in the article URL), 27 of the 28 sampled matches it keeps are about the park (96%) |
 
 ## Full scan (2026-11-12 to 2026-11-13)
 
@@ -44,6 +44,37 @@ to 2025-07-01. The export row counts equal the scan database: 636,731 matches, 4
 - Downloaded 3.73 GB zipped; decompressed and scanned 11.55 GB.
 - 914,630 well-formed records, 0 malformed lines.
 - 388 park matches: YELL 272, YOSE 71, ZION 20, GRSM 13, GRCA 12.
+
+## Precision check (100 random matches from the test week)
+
+`gdelt_precision_sample.csv` holds 100 random matches (seed 7) with `is_about_park` (1 = the park itself is the
+main subject or a central part of the article). Claude drafted a label for each row from the title in the article
+URL (`claude_draft`; `?` where the URL has no title); the team member then confirmed every row. Of the 89 rows
+with a 1 or 0 draft, all 89 were kept; of the 11 rows drafted `?`, 1 became 1 and 10 became 0.
+
+| Park | About the park |
+| --- | ---: |
+| YELL | 27 of 67 |
+| YOSE | 1 of 12 |
+| GRCA | 1 of 4 |
+| ZION | 3 of 10 |
+| GRSM | 2 of 7 |
+| All | **34 of 100** |
+
+Why the full name is not enough: the name appears in articles about something else, often reprinted many times.
+- One syndicated column (*Wayne's World*) mentions Yellowstone in passing: 10 of the 100 matches.
+- One AP story on grizzly bear protection across the Rocky Mountain states: 7 matches.
+- One explainer on aerial firefighting during the California fires: 4 matches. One syndicated radio article: 4 matches.
+- Travel rankings and lists ("top destinations of 2025", "most popular natural landmarks").
+- Same-name entities: the TV series *Yellowstone*.
+
+Refined rule tested on the same 100 labels: keep a match only when the park's own name appears in the article URL
+path (`yellowstone`, `yosemite`, `grand canyon`, `zion`, `smoky`/`smokies`). It keeps 28 matches, 27 of them about the
+park (96%), and finds 27 of the 34 relevant matches (79%). The one miss is a *Yellowstone* TV-series article; the 7
+relevant matches it drops are multi-park articles (reservations, lodging prices, a podcast) and a Gardiner
+weekend-getaway piece. Two other rules do not help: requiring the name in a location field (12 of 47) or counting each
+syndicated story once (30 of 77). The URL rule was chosen after seeing these labels, so the next step is to label a
+fresh random sample of matches that pass it before the news signal is used in the evaluation.
 
 ## Matching
 
