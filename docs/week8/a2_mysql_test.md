@@ -12,7 +12,7 @@ default 128 MB buffer pool). Both loads use `src/ingest/ridb_download.py`, `src/
 | Map facilities to the five parks | 79 facilities: GRCA 5, GRSM 34, YELL 7, YOSE 17, ZION 16 | 90 facilities: GRCA 5, GRSM 36, YELL 10, YOSE 22, ZION 17 |
 | Check keys | 0 orphans (8 checks), 0 duplicate keys (5 checks), 0 constraint violations (4 checks) | The same 17 checks: all 0 |
 | Row counts match the source files | Reconciliation difference 0 for all 10 (fiscal year, park) rows | Reconciliation difference 0 for all 55 rows |
-| Reservations lower held-out error in at least three parks | Part 2, not run yet | Part 2 uses this load; not run yet |
+| Reservations lower held-out error in at least three parks | Part 2 uses the all-years load | PASS on 2026-11-15: lower in 3 of 5 parks (GRCA, YOSE, ZION), `a2_part2_result.md` |
 
 ## Part 1: row accounting
 
