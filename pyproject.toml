@@ -7,6 +7,7 @@ requires-python = ">=3.12"
 dependencies = [
     "beautifulsoup4>=4.15.0",
     "pandas>=3.0.6",
+    "pyarrow>=26.0.1",
     "pymysql>=1.2.3",
     "python-dotenv>=1.2.4",
     "pytrends>=4.9.2",
