@@ -1,0 +1,159 @@
+{
+  "spec": "docs/week8/a1_part2_spec.md",
+  "git_guard": true,
+  "head": "784147f02be5e55eff67f6426d2a265196498acd",
+  "seed": 20261116,
+  "frame_rows": 174519,
+  "frame_sha256": "d231bfd61b17313ca43102bba3c244950584ef6273de39b460b7fc1e6de7f23e",
+  "frame_key_format": "sha256 over the frame rows sorted by key, one 'record_id<TAB>url<TAB>park_code<LF>' each",
+  "strata": [
+    {
+      "park_code": "GRCA",
+      "period": "A",
+      "months": "2015-02..2023-12",
+      "frame_rows": 18895,
+      "sample_rows": 30
+    },
+    {
+      "park_code": "GRCA",
+      "period": "B",
+      "months": "2024-01..2025-12",
+      "frame_rows": 4189,
+      "sample_rows": 10
+    },
+    {
+      "park_code": "GRSM",
+      "period": "A",
+      "months": "2015-02..2023-12",
+      "frame_rows": 8680,
+      "sample_rows": 30
+    },
+    {
+      "park_code": "GRSM",
+      "period": "B",
+      "months": "2024-01..2025-12",
+      "frame_rows": 964,
+      "sample_rows": 10
+    },
+    {
+      "park_code": "YELL",
+      "period": "A",
+      "months": "2015-02..2023-12",
+      "frame_rows": 78290,
+      "sample_rows": 30
+    },
+    {
+      "park_code": "YELL",
+      "period": "B",
+      "months": "2024-01..2025-12",
+      "frame_rows": 11677,
+      "sample_rows": 10
+    },
+    {
+      "park_code": "YOSE",
+      "period": "A",
+      "months": "2015-02..2023-12",
+      "frame_rows": 40740,
+      "sample_rows": 30
+    },
+    {
+      "park_code": "YOSE",
+      "period": "B",
+      "months": "2024-01..2025-12",
+      "frame_rows": 2346,
+      "sample_rows": 10
+    },
+    {
+      "park_code": "ZION",
+      "period": "A",
+      "months": "2015-02..2023-12",
+      "frame_rows": 7903,
+      "sample_rows": 30
+    },
+    {
+      "park_code": "ZION",
+      "period": "B",
+      "months": "2024-01..2025-12",
+      "frame_rows": 835,
+      "sample_rows": 10
+    }
+  ],
+  "inputs": [
+    {
+      "path": "data/landing/gdelt_matches/pull_date=2026-11-13/matches_s1.csv.gz",
+      "sha256": "78f8f17f2928596dc609a8b0ba768618e5759e7b867e10faf96a082ad66276a7",
+      "rows": 174316
+    },
+    {
+      "path": "data/landing/gdelt_matches/pull_date=2026-11-13/matches_s2.csv.gz",
+      "sha256": "407e7bc73d788178cfe91c30cd59920754d110f4055824ebd4021f5c871b9b3e",
+      "rows": 187697
+    },
+    {
+      "path": "data/landing/gdelt_matches/pull_date=2026-11-13/matches_s3.csv.gz",
+      "sha256": "0ce9645448d4924f5f66ba5923fd2ca1834d29a03e3c93c3345db16766a768f0",
+      "rows": 151322
+    },
+    {
+      "path": "data/landing/gdelt_matches/pull_date=2026-11-13/matches_s4.csv.gz",
+      "sha256": "ac1aa5b3d8996db779e9c09d5bc9de288657ff1712a9f3d2bc31a9a659eae59d",
+      "rows": 123396
+    },
+    {
+      "path": "docs/week8/gdelt_precision_sample.csv",
+      "sha256": "60c4e967688a0a82deb0aec6584928a80668fab49c8f6fc21b9387e93c0e830d"
+    }
+  ],
+  "blobs_at_head": {
+    "docs/week8/a1_part2_spec.md": "95a13f18127d6d31453a76e0a25a7d1d7f98b591",
+    "src/gdelt_sample.py": "c8d8c83541a547eed13f9f2618eef47c60be80d6",
+    "src/gdelt_url_rule.py": "61721f618c366804aa72d1b7b60c26de8f2ccad1"
+  },
+  "seen_urls": {
+    "paths": [
+      {
+        "name": "gdelt_design",
+        "kind": "folder",
+        "files_read": 49,
+        "bytes_read": 584062,
+        "files_unreadable": 0,
+        "spark_scratch_files_left_out": 0,
+        "files_with_printed_url": []
+      },
+      {
+        "name": "gdelt_build",
+        "kind": "folder",
+        "files_read": 429,
+        "bytes_read": 4192428,
+        "files_unreadable": 0,
+        "spark_scratch_files_left_out": 0,
+        "files_with_printed_url": []
+      },
+      {
+        "name": "06f3c0d6-4881-46e3-99b8-500c0dacff49",
+        "kind": "folder",
+        "files_read": 432,
+        "bytes_read": 151255045,
+        "files_unreadable": 0,
+        "spark_scratch_files_left_out": 0,
+        "files_with_printed_url": []
+      },
+      {
+        "name": "06f3c0d6-4881-46e3-99b8-500c0dacff49.jsonl",
+        "kind": "file",
+        "files_read": 1,
+        "bytes_read": 49129579,
+        "files_unreadable": 0,
+        "spark_scratch_files_left_out": 0,
+        "files_with_printed_url": []
+      }
+    ],
+    "files_read": 911,
+    "sample_rows_with_printed_url": 0
+  },
+  "sample": {
+    "path": "docs/week8/a1_part2_sample.csv",
+    "rows": 200,
+    "sha256": "ac7bae25cabca17a74e98de15982f1f6bb5c0013bd0445fb5b444863c28a03ff"
+  }
+}
