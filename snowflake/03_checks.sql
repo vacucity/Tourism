@@ -137,7 +137,7 @@ ORDER BY n;
 -- 5. Declared constraints: 6 rows (2 on DIM_PARK, 1 on DIM_MONTH, 3 on FACT_PARK_MONTH), none enforced
 SELECT table_name, constraint_name, constraint_type, enforced
 FROM NPS_TOURISM.INFORMATION_SCHEMA.TABLE_CONSTRAINTS
-WHERE table_schema = 'DW'
+WHERE table_schema = 'DW' AND table_name IN ('DIM_PARK', 'DIM_MONTH', 'FACT_PARK_MONTH')
 ORDER BY table_name, constraint_type, constraint_name;
 
 -- 6. Business query 1: the dashboard preview from the last cell of 03_gold in Databricks, answered from the star.

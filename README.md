@@ -15,14 +15,15 @@ project at mid-term, 2026-11-15.
 | --- | --- | --- |
 | NPS, NOAA, OPM and Google Trends feeds | Built | Landed in `data/landing/`. They feed Bronze, Silver and Gold in Databricks |
 | GDELT 2.0 GKG archive scan, the dataset for the course's 5 TB rule | Built, full archive scanned | 403,565 files, 2,888.87 GB zipped and 9,057.21 GB decompressed, 735,225,688 records, 636,731 park matches |
-| GDELT tables in the lakehouse | Not built yet | The matches, daily counts and audit are exported to `data/landing/`, and `00_setup` copies them into the landing Volume. No notebook builds tables from them yet |
+| GDELT tables in the lakehouse | Notebook written | `07_gdelt_news` builds the Bronze, Silver and Gold tables from the exports, and CI runs it on local Spark. The Databricks run is in [Next steps](#next-steps) |
 | Reservations in MySQL (3NF) | Built | FY2015–FY2025: 7,586,234 reservations and 7,243,035 orders. The reconciliation difference is 0 in all 55 (fiscal year, park) rows |
 | Incremental extract, MySQL to Parquet | Built | One full pull of 7,586,234 rows. A second run found no new or changed rows |
 | Databricks Bronze, Silver and Gold | Built | Notebooks 00–06, run by hand from a Databricks Git folder |
 | Snowflake star schema | Built | `DIM_PARK`, `DIM_MONTH` and `FACT_PARK_MONTH`, loaded from `gold_park_month` |
 | Week 8 test A1 (GDELT) | 3 of 4 conditions met | Precision is 34 of 100. A refined URL rule keeps 28 matches, 27 of them about the park |
 | Week 8 test A2 (reservations) | Passed | Part 1: the load checks pass. Part 2: in a pre-registered forecast test, reservations lowered held-out error in 3 of 5 parks, the minimum the proposal set |
-| Dashboard, scheduled job, CI | Not built yet | See [Next steps](#next-steps) |
+| Dashboard, scheduled job | Not built yet | See [Next steps](#next-steps) |
+| CI with GitHub Actions | Added, not run on GitHub yet | `.github/workflows/ci.yml`, see [CI](#ci) |
 
 ## Data
 
@@ -142,6 +143,9 @@ The notebooks run in order from a Databricks Git folder of this repo, in catalog
     measures and a backup-station flag.
 - `snowflake/03_checks.sql` is read-only. It runs 11 PASS/FAIL checks, a column-by-column comparison with staging,
   and two business queries.
+- `snowflake/04_load_reservations.sql` loads `gold_park_month_reservations.csv` into a second fact,
+  `FACT_PARK_MONTH_RESERVATIONS`, at the same park x month grain. `05_checks_reservations.sql` is read-only: 11
+  PASS/FAIL checks, a column-by-column comparison with staging, totals, and a query across the two facts.
 
 The model is in [`docs/star_schema.md`](docs/star_schema.md).
 
@@ -193,7 +197,7 @@ databricks/notebooks/    00_setup ... 06_forecast_test
 docs/                    proposal, GDELT runbook, star schema, Week 8 test results (docs/week8),
                          superseded proposal drafts (docs/archive)
 mysql/                   01_schema.sql, 02_checks.sql
-snowflake/               01_setup.sql, 02_load_star.sql, 03_checks.sql
+snowflake/               01_setup.sql, 02_load_star.sql, 03_checks.sql, 04_load_reservations.sql, 05_checks_reservations.sql
 src/ingest/              feed scripts, GDELT scan worker, RIDB downloader
 src/                     load_mysql.py, extract_reservations.py, a2_forecast.py
 ```
@@ -246,12 +250,34 @@ Snowflake:
 1. Run `snowflake/01_setup.sql` in a Snowsight worksheet.
 2. Upload `gold_park_month.csv` from the Databricks `exports` Volume to `NPS_TOURISM.STAGING.NPS_STAGE`.
 3. Run `02_load_star.sql`, then `03_checks.sql`, one statement at a time.
+4. Upload `docs/week8/a2_inputs/gold_park_month_reservations.csv` to the same stage, then run
+   `04_load_reservations.sql` and `05_checks_reservations.sql`, one statement at a time.
 
 The A2 part 2 test can be rerun without the private data, from the committed aggregates:
 
 ```
 uv run python src/a2_forecast.py --park-month docs/week8/a2_inputs/a2_inputs_park_month.csv --camping-facility-month docs/week8/a2_inputs/gold_facility_month_camping.csv --out <folder>
+uv run python tests/check_a2_rerun.py --summary <folder>/a2_forecast_summary.csv --monthly <folder>/a2_forecast_monthly.csv
 ```
+
+`tests/check_a2_rerun.py` compares the two written files with the committed outputs of 06 and states the verdict.
+
+## CI
+
+`.github/workflows/ci.yml` runs on GitHub Actions on every push and pull request to `main`. It uses only committed
+files: no secrets, no private data, and no network beyond installing Python, Java and packages. Two jobs run on
+`ubuntu-latest`:
+- `offline-checks`, Python 3.12 with `uv.lock` (`uv sync --locked`):
+  - compiles every `.py` file in `src`, `tests` and `databricks`;
+  - runs the `src/gdelt_url_rule.py` self-tests and `src/gdelt_sample.py check` (never `draw`, `score` or
+    `check-labels`);
+  - reruns the A2 part 2 test from `docs/week8/a2_inputs/` and compares it with the committed outputs, with
+    `tests/check_a2_rerun.py`.
+- `notebook-07-local`, Java 21 with PySpark 4.3.0: runs `07_gdelt_news` on local Spark with
+  `tests/run_notebook_local.py`, then checks its two exports with `tests/check_gdelt_gold.py`.
+
+To see the results, open the repository on GitHub and click the **Actions** tab, then the **CI** workflow. Each run
+lists both jobs, with the log of every step. A pull request shows the same jobs under its checks.
 
 ## Next steps
 
@@ -262,4 +288,4 @@ The final deadline is December 11, 2026.
 | Nov 16–22 | Apply the URL rule to the matched URLs, which needs no rescan, and label a fresh sample to check its precision. Build GDELT Bronze, Silver and Gold tables: news per park-month |
 | Nov 23–29 | Add news coverage to the forecast comparison, as the proposal plans after the full scan. Count it as a share of all GKG records per month, because GDELT has no files from 2025-06-15 to 2025-07-01. Load the reservation and news facts into Snowflake |
 | Nov 30–Dec 6 | Run the notebooks as one Databricks Job, with data quality checks that fail the run. Build a dashboard on the star schema |
-| Dec 7–11 | CI with GitHub Actions, including the offline A2 rerun. The final report and presentation |
+| Dec 7–11 | The final report and presentation |

@@ -1,0 +1,114 @@
+# CI: offline checks that use only committed files.
+# No secrets, no private data, and no network beyond installing Python, Java and packages.
+# Results: the Actions tab of the repository on GitHub, workflow "CI".
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Read-only token: the jobs only check out the repository
+permissions:
+  contents: read
+
+# A newer push to the same branch or pull request cancels the run still in progress
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    # bash -eo pipefail: a step stops at the first failing command, also inside a pipe to tee
+    shell: bash
+
+jobs:
+  offline-checks:
+    name: offline-checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install uv (UV_PYTHON=3.12 for the steps below)
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.12.5"          # the uv that wrote uv.lock
+          python-version: "3.12"
+          enable-cache: true
+          cache-suffix: offline-checks
+
+      - name: Install Python 3.12 and the project environment from uv.lock
+        run: uv sync --locked
+
+      - name: Compile every .py file
+        run: uv run --locked python -m compileall -q src tests databricks
+
+      - name: URL rule R0 self-tests (src/gdelt_url_rule.py)
+        run: |
+          uv run --locked python src/gdelt_url_rule.py | tee "$RUNNER_TEMP/url_rule.log"
+          test "$(tail -n 1 "$RUNNER_TEMP/url_rule.log")" = "all self-tests passed"
+
+      # check only: draw, score and check-labels are never run in CI
+      - name: A1 part 2 frozen values (src/gdelt_sample.py check)
+        run: |
+          uv run --locked python src/gdelt_sample.py check | tee "$RUNNER_TEMP/sample_check.log"
+          test "$(tail -n 1 "$RUNNER_TEMP/sample_check.log")" = "  all equal"
+
+      - name: A2 part 2 offline rerun from docs/week8/a2_inputs
+        run: >-
+          uv run --locked python src/a2_forecast.py
+          --park-month docs/week8/a2_inputs/a2_inputs_park_month.csv
+          --camping-facility-month docs/week8/a2_inputs/gold_facility_month_camping.csv
+          --out "$RUNNER_TEMP/a2_rerun"
+
+      - name: Compare the rerun with the committed outputs of 06 (tests/check_a2_rerun.py)
+        run: >-
+          uv run --locked python tests/check_a2_rerun.py
+          --summary "$RUNNER_TEMP/a2_rerun/a2_forecast_summary.csv"
+          --monthly "$RUNNER_TEMP/a2_rerun/a2_forecast_monthly.csv"
+
+  notebook-07-local:
+    name: notebook-07-local
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install Java 21 (PySpark needs Java 17 or 21)
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.12.5"
+          enable-cache: true
+          cache-suffix: notebook-07-local
+
+      # The pinned versions of tests/run_notebook_local.py, without the project environment. The exports go to
+      # $RUNNER_TEMP/nb07/exports, outside the repository.
+      - name: Run 07_gdelt_news on local PySpark (tests/run_notebook_local.py)
+        run: >-
+          uv run --no-project --python 3.12
+          --with pyspark==4.3.0 --with pandas==2.2.3 --with numpy==2.1.3
+          python -I tests/run_notebook_local.py --out "$RUNNER_TEMP/nb07"
+
+      # The command of 07's last cell
+      - name: Check the two exports against a recomputation (tests/check_gdelt_gold.py)
+        run: |
+          uv run --no-project --python 3.12 --with pandas==2.2.3 --with numpy==2.1.3 --with duckdb==2.0.0 \
+            python -I tests/check_gdelt_gold.py \
+            --month-gkg "$RUNNER_TEMP/nb07/exports/gold_month_gkg.csv" \
+            --park-month-news "$RUNNER_TEMP/nb07/exports/gold_park_month_news.csv" \
+            | tee "$RUNNER_TEMP/gold_check.log"
+          test "$(tail -n 1 "$RUNNER_TEMP/gold_check.log")" = "RESULT: both files match the recomputation"
