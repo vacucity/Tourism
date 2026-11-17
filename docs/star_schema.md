@@ -89,6 +89,6 @@ erDiagram
   - Flag: `otb_complete`, 1 = `camping_otb` holds every booking made before day 1 (523 of 660 rows; YELL from
     2022-03, the other parks from 2015-10, all through 2025-09).
   - The five counts are NULL in 2025-10..2025-12 (15 rows): those stays are in the FY2026 file, not published yet.
-  - Check 2 of `05_checks_reservations.sql` joins the fact back into the CSV layout and compares every column with
+  - Check 2 of `05_checks_reservations.sql` joins the fact back into the CSV layout and finds no difference from
     staging. Query 5 is a drill-across: visits and camping bookings per park in 2024, each fact summed on its own and
     then joined.

@@ -19,7 +19,7 @@ project at mid-term, 2026-11-15.
 | Reservations in MySQL (3NF) | Built | FY2015–FY2025: 7,586,234 reservations and 7,243,035 orders. The reconciliation difference is 0 in all 55 (fiscal year, park) rows |
 | Incremental extract, MySQL to Parquet | Built | One full pull of 7,586,234 rows. A second run found no new or changed rows |
 | Databricks Bronze, Silver and Gold | Built | Notebooks 00–06, run by hand from a Databricks Git folder |
-| Snowflake star schema | Built | `DIM_PARK`, `DIM_MONTH` and `FACT_PARK_MONTH`, loaded from `gold_park_month` |
+| Snowflake star schema | Built | `DIM_PARK`, `DIM_MONTH` and `FACT_PARK_MONTH`, loaded from `gold_park_month`; `FACT_PARK_MONTH_RESERVATIONS`, loaded from `gold_park_month_reservations`. All 11 checks of `05_checks_reservations.sql` pass, and a rerun of the MERGE changes 0 rows |
 | Week 8 test A1 (GDELT) | 3 of 4 conditions met | Precision is 34 of 100. A refined URL rule keeps 28 matches, 27 of them about the park |
 | Week 8 test A2 (reservations) | Passed | Part 1: the load checks pass. Part 2: in a pre-registered forecast test, reservations lowered held-out error in 3 of 5 parks, the minimum the proposal set |
 | Dashboard, scheduled job | Not built yet | See [Next steps](#next-steps) |
@@ -286,6 +286,6 @@ The final deadline is December 11, 2026.
 | Week | Work |
 | --- | --- |
 | Nov 16–22 | Apply the URL rule to the matched URLs, which needs no rescan, and label a fresh sample to check its precision. Build GDELT Bronze, Silver and Gold tables: news per park-month |
-| Nov 23–29 | Add news coverage to the forecast comparison, as the proposal plans after the full scan. Count it as a share of all GKG records per month, because GDELT has no files from 2025-06-15 to 2025-07-01. Load the reservation and news facts into Snowflake |
+| Nov 23–29 | Add news coverage to the forecast comparison, as the proposal plans after the full scan. Count it as a share of all GKG records per month, because GDELT has no files from 2025-06-15 to 2025-07-01. Load the news fact into Snowflake (the reservation fact is loaded) |
 | Nov 30–Dec 6 | Run the notebooks as one Databricks Job, with data quality checks that fail the run. Build a dashboard on the star schema |
 | Dec 7–11 | The final report and presentation |
