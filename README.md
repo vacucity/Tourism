@@ -15,7 +15,7 @@ project at mid-term, 2026-11-15.
 | --- | --- | --- |
 | NPS, NOAA, OPM and Google Trends feeds | Built | Landed in `data/landing/`. They feed Bronze, Silver and Gold in Databricks |
 | GDELT 2.0 GKG archive scan, the dataset for the course's 5 TB rule | Built, full archive scanned | 403,565 files, 2,888.87 GB zipped and 9,057.21 GB decompressed, 735,225,688 records, 636,731 park matches |
-| GDELT tables in the lakehouse | Notebook written | `07_gdelt_news` builds the Bronze, Silver and Gold tables from the exports, and CI runs it on local Spark. The Databricks run is in [Next steps](#next-steps) |
+| GDELT tables in the lakehouse | Built | `07_gdelt_news` ran on Databricks on 2026-11-17 with every gate passing: `gold_month_gkg` (132 rows) and `gold_park_month_news` (660 rows, news_all 612,919, news_url 174,604). `tests/check_gdelt_gold.py` recomputes both exports from `data/landing` without Spark: MATCH, largest difference 0 |
 | Reservations in MySQL (3NF) | Built | FY2015–FY2025: 7,586,234 reservations and 7,243,035 orders. The reconciliation difference is 0 in all 55 (fiscal year, park) rows |
 | Incremental extract, MySQL to Parquet | Built | One full pull of 7,586,234 rows. A second run found no new or changed rows |
 | Databricks Bronze, Silver and Gold | Built | Notebooks 00–06, run by hand from a Databricks Git folder |
