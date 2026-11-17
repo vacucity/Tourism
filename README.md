@@ -23,7 +23,7 @@ project at mid-term, 2026-11-15.
 | Week 8 test A1 (GDELT) | 3 of 4 conditions met | Precision is 34 of 100. A refined URL rule keeps 28 matches, 27 of them about the park |
 | Week 8 test A2 (reservations) | Passed | Part 1: the load checks pass. Part 2: in a pre-registered forecast test, reservations lowered held-out error in 3 of 5 parks, the minimum the proposal set |
 | Dashboard, scheduled job | Not built yet | See [Next steps](#next-steps) |
-| CI with GitHub Actions | Added, not run on GitHub yet | `.github/workflows/ci.yml`, see [CI](#ci) |
+| CI with GitHub Actions | Passing | `.github/workflows/ci.yml`, see [CI](#ci). Both jobs passed on GitHub in runs #1 to #3 (commits e8d79ec, 7288c47, 4017558) |
 
 ## Data
 
