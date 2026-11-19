@@ -1,0 +1,294 @@
+{
+  "P": 0.5021913564330149,
+  "P_fraction": "1314629/2617785",
+  "pass": false,
+  "bar": 0.9,
+  "interval_95": [
+    0.40796525096490843,
+    0.5964174619011214
+  ],
+  "strata": [
+    {
+      "park_code": "GRCA",
+      "period": "A",
+      "months": "2015-02..2023-12",
+      "frame_rows": 18895,
+      "weight": 0.10826901368905391,
+      "n": 30,
+      "x": 14,
+      "url_only": 16
+    },
+    {
+      "park_code": "GRCA",
+      "period": "B",
+      "months": "2024-01..2025-12",
+      "frame_rows": 4189,
+      "weight": 0.024003117139108063,
+      "n": 10,
+      "x": 8,
+      "url_only": 1
+    },
+    {
+      "park_code": "GRSM",
+      "period": "A",
+      "months": "2015-02..2023-12",
+      "frame_rows": 8680,
+      "weight": 0.04973670488600095,
+      "n": 30,
+      "x": 13,
+      "url_only": 16
+    },
+    {
+      "park_code": "GRSM",
+      "period": "B",
+      "months": "2024-01..2025-12",
+      "frame_rows": 964,
+      "weight": 0.005523753860611166,
+      "n": 10,
+      "x": 6,
+      "url_only": 3
+    },
+    {
+      "park_code": "YELL",
+      "period": "A",
+      "months": "2015-02..2023-12",
+      "frame_rows": 78290,
+      "weight": 0.44860444994527815,
+      "n": 30,
+      "x": 13,
+      "url_only": 14
+    },
+    {
+      "park_code": "YELL",
+      "period": "B",
+      "months": "2024-01..2025-12",
+      "frame_rows": 11677,
+      "weight": 0.06690962015597156,
+      "n": 10,
+      "x": 9,
+      "url_only": 0
+    },
+    {
+      "park_code": "YOSE",
+      "period": "A",
+      "months": "2015-02..2023-12",
+      "frame_rows": 40740,
+      "weight": 0.233441630997198,
+      "n": 30,
+      "x": 16,
+      "url_only": 14
+    },
+    {
+      "park_code": "YOSE",
+      "period": "B",
+      "months": "2024-01..2025-12",
+      "frame_rows": 2346,
+      "weight": 0.013442662403520534,
+      "n": 10,
+      "x": 9,
+      "url_only": 0
+    },
+    {
+      "park_code": "ZION",
+      "period": "A",
+      "months": "2015-02..2023-12",
+      "frame_rows": 7903,
+      "weight": 0.04528446759378635,
+      "n": 30,
+      "x": 8,
+      "url_only": 22
+    },
+    {
+      "park_code": "ZION",
+      "period": "B",
+      "months": "2024-01..2025-12",
+      "frame_rows": 835,
+      "weight": 0.004784579329471289,
+      "n": 10,
+      "x": 9,
+      "url_only": 0
+    }
+  ],
+  "parks": {
+    "GRCA": {
+      "x": 22,
+      "n": 40,
+      "precision": 0.55,
+      "wilson_95": [
+        0.39828829888440775,
+        0.6929492471905531
+      ],
+      "below_bar": true
+    },
+    "GRSM": {
+      "x": 19,
+      "n": 40,
+      "precision": 0.475,
+      "wilson_95": [
+        0.32935229550181694,
+        0.6250289314607027
+      ],
+      "below_bar": true
+    },
+    "YELL": {
+      "x": 22,
+      "n": 40,
+      "precision": 0.55,
+      "wilson_95": [
+        0.39828829888440775,
+        0.6929492471905531
+      ],
+      "below_bar": true
+    },
+    "YOSE": {
+      "x": 25,
+      "n": 40,
+      "precision": 0.625,
+      "wilson_95": [
+        0.47032160054531913,
+        0.7577722646420829
+      ],
+      "below_bar": true
+    },
+    "ZION": {
+      "x": 17,
+      "n": 40,
+      "precision": 0.425,
+      "wilson_95": [
+        0.28509168524815875,
+        0.5780519956394001
+      ],
+      "below_bar": true
+    }
+  },
+  "parks_below_bar": [
+    "GRCA",
+    "GRSM",
+    "YELL",
+    "YOSE",
+    "ZION"
+  ],
+  "period_B": {
+    "x": 41,
+    "n": 50,
+    "precision": 0.82,
+    "wilson_95": [
+      0.6920368054529739,
+      0.902299172675462
+    ]
+  },
+  "url_only": {
+    "rows": 86,
+    "labeled_1": 0,
+    "P_as_0": 0.5021913564330149,
+    "P_excluded": 0.9003642369589631
+  },
+  "frame_rows": 174519,
+  "frame_sha256": "d231bfd61b17313ca43102bba3c244950584ef6273de39b460b7fc1e6de7f23e",
+  "seed": 20261116,
+  "inputs": [
+    "data/landing/gdelt_matches/pull_date=2026-11-13/matches_s1.csv.gz",
+    "data/landing/gdelt_matches/pull_date=2026-11-13/matches_s2.csv.gz",
+    "data/landing/gdelt_matches/pull_date=2026-11-13/matches_s3.csv.gz",
+    "data/landing/gdelt_matches/pull_date=2026-11-13/matches_s4.csv.gz",
+    "docs/week8/gdelt_precision_sample.csv"
+  ],
+  "sample_rows": 200,
+  "design": {
+    "se_at_0.90": 0.02938617114194232,
+    "pass_chance": {
+      "0.85": {
+        "exact": 0.0695473731527221,
+        "normal": 0.07642603168843787
+      },
+      "0.88": {
+        "exact": 0.27640411469433357,
+        "normal": 0.26489934379474156
+      },
+      "0.90": {
+        "exact": 0.5225788415233052,
+        "normal": 0.5
+      },
+      "0.93": {
+        "exact": 0.8796320690021389,
+        "normal": 0.8849988787006896
+      }
+    }
+  },
+  "seen_urls": {
+    "paths": [
+      {
+        "name": "gdelt_design",
+        "kind": "folder",
+        "files_read": 49,
+        "bytes_read": 584062,
+        "files_unreadable": 0,
+        "spark_scratch_files_left_out": 0,
+        "files_with_printed_url": []
+      },
+      {
+        "name": "gdelt_build",
+        "kind": "folder",
+        "files_read": 429,
+        "bytes_read": 4192428,
+        "files_unreadable": 0,
+        "spark_scratch_files_left_out": 0,
+        "files_with_printed_url": []
+      },
+      {
+        "name": "06f3c0d6-4881-46e3-99b8-500c0dacff49",
+        "kind": "folder",
+        "files_read": 432,
+        "bytes_read": 151255045,
+        "files_unreadable": 0,
+        "spark_scratch_files_left_out": 0,
+        "files_with_printed_url": []
+      },
+      {
+        "name": "06f3c0d6-4881-46e3-99b8-500c0dacff49.jsonl",
+        "kind": "file",
+        "files_read": 1,
+        "bytes_read": 49129579,
+        "files_unreadable": 0,
+        "spark_scratch_files_left_out": 0,
+        "files_with_printed_url": []
+      }
+    ],
+    "files_read": 911,
+    "sample_rows_with_printed_url": 0
+  },
+  "drafts": {
+    "rows_with_draft": 200,
+    "firm_drafts": 56,
+    "agree": 53,
+    "agree_share": 0.9464285714285714,
+    "kappa": 0.6978417266187047,
+    "question_marks": 144,
+    "table": {
+      "draft 0 / label 0": 4,
+      "draft 0 / label 1": 1,
+      "draft 1 / label 0": 2,
+      "draft 1 / label 1": 49,
+      "draft ? / label 0": 89,
+      "draft ? / label 1": 55
+    },
+    "copy": {
+      "path": "docs/week8/a1_part2_claude_drafts.csv",
+      "rows": 200,
+      "sha256": "4cd7bc7d77908a5b7f5917df08b692a1f68c1d6f7dbba4a4306e55b531e61b8f",
+      "source_sha256": "4cd7bc7d77908a5b7f5917df08b692a1f68c1d6f7dbba4a4306e55b531e61b8f"
+    }
+  },
+  "commits": {
+    "spec_and_code": "784147f02be5e55eff67f6426d2a265196498acd",
+    "sample": "94c22f5a84256acc92da0a3de73bcd19910726c3",
+    "labels": "b6c1026eab6ad422b9bf5c055530ceda510f258d",
+    "head": "b6c1026eab6ad422b9bf5c055530ceda510f258d",
+    "labels_commit_files": [
+      "docs/week8/a1_part2_labels.csv"
+    ],
+    "labels_commit_only_labels": true,
+    "changed_since_draw": []
+  },
+  "git_guard": true
+}
