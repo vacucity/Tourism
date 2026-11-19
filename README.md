@@ -20,7 +20,7 @@ project at mid-term, 2026-11-15.
 | Incremental extract, MySQL to Parquet | Built | One full pull of 7,586,234 rows. A second run found no new or changed rows |
 | Databricks Bronze, Silver and Gold | Built | Notebooks 00–06, run by hand from a Databricks Git folder |
 | Snowflake star schema | Built | `DIM_PARK`, `DIM_MONTH` and `FACT_PARK_MONTH`, loaded from `gold_park_month`; `FACT_PARK_MONTH_RESERVATIONS`, loaded from `gold_park_month_reservations`. All 11 checks of `05_checks_reservations.sql` pass, and a rerun of the MERGE changes 0 rows |
-| Week 8 test A1 (GDELT) | 3 of 4 conditions met | Precision is 34 of 100. A refined URL rule keeps 28 matches, 27 of them about the park |
+| Week 8 test A1 (GDELT) | 3 of 4 conditions met | Precision is 34 of 100. Part 2, a pre-registered check of the URL rule on 200 fresh matches, is not met: P = 0.5022 against the bar 0.90, and all five parks are below the bar. 86 of the 200 rows, whose pages showed no text, count as 0. See [`a1_part2_result.md`](docs/week8/a1_part2_result.md) |
 | Week 8 test A2 (reservations) | Passed | Part 1: the load checks pass. Part 2: in a pre-registered forecast test, reservations lowered held-out error in 3 of 5 parks, the minimum the proposal set |
 | Dashboard, scheduled job | Not built yet | See [Next steps](#next-steps) |
 | CI with GitHub Actions | Passing | `.github/workflows/ci.yml`, see [CI](#ci). Both jobs passed on GitHub in runs #1 to #3 (commits e8d79ec, 7288c47, 4017558) |
@@ -164,9 +164,21 @@ The proposal named the project's two riskiest assumptions and a test for each.
 | At least 90% of checked matches are about the park | **Not met: 34 of 100.** The park name often appears in articles about something else: syndicated stories reprinted many times, travel lists, and the TV series *Yellowstone* |
 
 A refined rule requires the park name in the article's URL path. On the same 100 labels it keeps 28 matches, 27 of
-them about the park, and drops 7 of the 34 relevant matches. The rule was chosen after seeing these labels and is not
-in the scan code yet. A fresh sample of matches that pass it will be labeled before news coverage enters the
-comparison.
+them about the park, and drops 7 of the 34 relevant matches. The rule was chosen after seeing these labels, so part 2
+checked it on fresh matches.
+
+**A1 part 2: not met.** The rule, frozen as R0 in `src/gdelt_url_rule.py`, was checked on 200 random matches that
+pass it, 40 per park, under rules committed before the sample was drawn. The rules are in
+[`a1_part2_spec.md`](docs/week8/a1_part2_spec.md) and the result in
+[`a1_part2_result.md`](docs/week8/a1_part2_result.md).
+- The weighted precision is P = 0.5022 (95% interval 0.4080-0.5964), against the bar 0.90. A1's fourth condition
+  stays not met, and R0 is not changed.
+- Every park is below the per-park bar of at least 33 of 40: GRCA 22, GRSM 19, YELL 22, YOSE 25 and ZION 17 of 40.
+- 114 rows were labeled from the article content. For the other 86, neither the article nor its archive copy
+  showed the text, and they were set to 0 without being read; P counts them as 0. Without them, P is 0.9004 over the
+  114 read rows, which are not a random subset of the sample. Neither number is the precision of the matches that
+  pass the rule.
+- The news forecast test will mark its result below the bar, for the pooled precision and for all five parks.
 
 **A2: reservations are usable leading signals.** Details are in
 [`docs/week8/a2_mysql_test.md`](docs/week8/a2_mysql_test.md), [`a2_part2_spec.md`](docs/week8/a2_part2_spec.md)

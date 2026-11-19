@@ -76,6 +76,11 @@ weekend-getaway piece. Two other rules do not help: requiring the name in a loca
 syndicated story once (30 of 77). The URL rule was chosen after seeing these labels, so the next step is to label a
 fresh random sample of matches that pass it before the news signal is used in the evaluation.
 
+Part 2 did this under rules committed before the sample was drawn ([`a1_part2_spec.md`](a1_part2_spec.md)). On 200
+random matches that pass the rule, 40 per park, the weighted precision is P = 0.5022 against the bar 0.90, so the
+fourth condition stays not met, and all five parks are below the per-park bar. 86 of the 200 rows were set to 0
+without being read. The result is in [`a1_part2_result.md`](a1_part2_result.md).
+
 ## Matching
 
 A record matches a park when its full name ("Yellowstone National Park", etc.) appears in
@@ -89,5 +94,10 @@ regular expression on 30 files spread over 2015–2026.
 ```bat
 uv run python src/ingest/gdelt_gkg.py scan --start 2025-01-06 --end 2025-01-12 --workers 6
 uv run python src/ingest/gdelt_gkg.py --db data/work/gdelt/rerun_check.sqlite scan --start 2025-01-06 --end 2025-01-12 --workers 6
-uv run python src/ingest/gdelt_gkg.py sample --n 100
+uv run python src/ingest/gdelt_gkg.py --db data/work/gdelt/rerun_check.sqlite sample --n 100
 ```
+
+`sample` draws from every match in the database it reads, with seed 7, and writes
+`data/work/gdelt/precision_sample.csv`. `gdelt_precision_sample.csv` is seed 7 over the 388 matches of the test week.
+After the full scan, `data/work/gdelt/gdelt.sqlite` holds all 636,731 matches, so the command reads the rerun
+database, which holds only the test week.
